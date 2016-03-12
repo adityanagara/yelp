@@ -48,7 +48,16 @@ for x in xrange(arr.shape[0]):
 
 arr = np.concatenate((arr,temp_labels.reshape(temp_labels.shape[0],1)),axis=1)
 
-print temp_labels
+print 'labeling images...'
+#for x in xrange(train_photos_biz_ids.shape[0]):
+#    # Find the class label from the array to associate it with an image
+#    if arr[train_photos_biz_ids.business_id[x] == arr[:,0],3]:
+#        train_photos_biz_ids.loc[x,'class_labels'] = arr[train_photos_biz_ids.business_id[x] == arr[:,0],3]
+#
+## Save the class labels of the images
+#train_photos_biz_ids.to_csv('../data/train_photos.csv')
+#print train_photos_biz_ids.shape
+
 
 #
 #print train_labels.shape
