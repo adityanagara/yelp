@@ -19,6 +19,9 @@ import deep_network
 import time
 import csv
 import cPickle
+import logging
+
+
 #sys.stdout = os.fdopen(sys.stdout.fileno(), 'w', 0)
 photos_labels = pd.read_csv('../data/train_photos.csv')
 
@@ -82,15 +85,19 @@ def resize_and_crop(img_path, modified_path, size, crop_type='top'):
 
 
 def load_images(file_path,dest_path):
+    photos_labels_valid = photos_labels[photos_labels.class_labels != 0].copy()
+    X_train = np.zeros((photos_labels_valid.shape[0],224,224,3),dtype='uint8')
+    Y_train = photos_labels_valid.class_labels.values.astype('uint8')
+    for i in xrange(photos_labels_valid.shape[0]):
+        print photos_labels_valid.photo_id.values[int(i)]
+        X_train[i,...] = np.asarray(Image.open('../data/data/train_photos/' + str(photos_labels_valid.photo_id.values[int(i)]) + '.jpg'))
+    print X_train.shape,Y_train.shape
+    return X_train,Y_train
     
-    arr = resize_and_crop(file_path,file_path,(224,224))
-    
-
-#images_path = '../data/data/train_photos/'
-###images_list = os.listdir(images_path)
-##images_list = filter(lambda x: x[-4:] == '.jpg',images_list)
-#start_index = int(sys.argv[1])
-#end_index = int(sys.argv[2])
+##images_list = os.listdir(images_path)
+#images_list = filter(lambda x: x[-4:] == '.jpg',images_list)
+start_index = int(sys.argv[1])
+end_index = int(sys.argv[2])
 #print 'Starting conversion to (224,224) '
 #for i in xrange(start_index,end_index):#photos_labels.shape[0]
 #    dest_path = str(photos_labels.photo_id[i]) + '_.jpg'
@@ -124,17 +131,17 @@ def iterate_minibatches(inputs, targets, batchsize, shuffle=False):
             excerpt = slice(start_idx, start_idx + batchsize)
         yield inputs[excerpt], targets[excerpt]
 
-def main(num_epochs = 100,num_points = 1200,compute_flag='cpu'):
+def main(num_epochs = 100,num_points = 1200,compute_flag='gpu'):
     # Arguments passed as string need to be converted to int    
     num_epochs = int(num_epochs)
-    num_points = int(num_points)
+#    num_points = int(num_points)
     # Define name of output files
-    results_file_name = 'exp_' + str(num_epochs) + '_' + str(num_points) + '_' + compute_flag + '.csv'
-    network_file_name = 'network_' + str(num_epochs) + '_' + str(num_points) + '_' + compute_flag 
+    results_file_name = 'exp_' + str(num_epochs) + '_' + compute_flag + '.csv'
+    network_file_name = 'network_' + str(num_epochs) + '_' + compute_flag 
     print 'Saving file to: %s' % results_file_name
     print 'Number of points: %d ' % num_points
     print 'Compute Flag: %s ' % compute_flag
-    save_file(results_file_name)  
+#    save_file(results_file_name)  
     Deep_learner = deep_network.DCNN()
     # Define the input tensor
     input_var = T.tensor4('inputs')
@@ -145,7 +152,7 @@ def main(num_epochs = 100,num_points = 1200,compute_flag='cpu'):
     network = Deep_learner.build_DCNN(input_var)
     
     train_prediction = lasagne.layers.get_output(network)
-    test_prediction = lasagne.layers.get_output(network)
+#    test_prediction = lasagne.layers.get_output(network)
    
     loss = lasagne.objectives.categorical_crossentropy(train_prediction, output_var)
     
@@ -154,12 +161,12 @@ def main(num_epochs = 100,num_points = 1200,compute_flag='cpu'):
     params = lasagne.layers.get_all_params(network, trainable=True)
     
     updates = lasagne.updates.nesterov_momentum(
-            loss, params, learning_rate=0.001, momentum=0.9)
+            loss, params, learning_rate=0.01, momentum=0.9)
     
-    train_acc = T.mean(T.eq(T.argmax(test_prediction, axis=1), output_var),
-                      dtype=theano.config.floatX) 
+#    train_acc = T.mean(T.eq(T.argmax(test_prediction, axis=1), output_var),
+#                      dtype=theano.config.floatX) 
     # Define theano function which generates and compiles C code for the optimization problem
-    train_fn = theano.function([input_var, output_var], [loss,train_acc], updates=updates)
+    train_fn = theano.function([input_var, output_var], [loss], updates=updates)
     
 #    test_fn = theano.function([input_var, output_var],test_loss, updates=updates)
     
@@ -170,15 +177,8 @@ def main(num_epochs = 100,num_points = 1200,compute_flag='cpu'):
     validation_set_list = filter(lambda x: x[-4:] == '.pkl' and 'val' in x,validation_set_list)
     experiment_start_time = time.time()
     # Load Data Set
-    DataSet = []
     print('Loading data set...')
-    for file_name in training_set_list[:3]:
-        print file_name
-        temp_file = file(base_path + file_name,'rb')
-        X_train,Y_train = cPickle.load(temp_file)
-        temp_file.close()
-        Y_train = Y_train.reshape(-1,).astype('uint8')
-        DataSet.append((X_train,Y_train))
+    X_train,Y_train = load_images()
     
     print('Start training...')
     for epoch in range(num_epochs):
@@ -187,30 +187,22 @@ def main(num_epochs = 100,num_points = 1200,compute_flag='cpu'):
         train_batches = 0
         train_acc = 0
         start_time = time.time()
-        for data in DataSet:
-#        for file_name in training_set_list:
-#            print file_name
-#            temp_file = file(base_path + file_name,'rb')
-#            X_train,Y_train = cPickle.load(temp_file)
-#            Y_train = Y_train.astype('uint8')
-#            temp_file.close()
-            for batch in iterate_minibatches(data[0], data[1], 1059, shuffle=False):
-                inputs, targets = batch
-                err,acc = train_fn(inputs, targets)
-                train_err += err
-                train_acc += acc
-                train_batches += 1
+        for batch in iterate_minibatches(X_train, Y_train,512, shuffle=False):
+            inputs, targets = batch
+            err,acc = train_fn(inputs, targets)
+            train_err += err
+            train_acc += acc
+            train_batches += 1
         print("Epoch {} of {} took {:.3f}s".format(
             epoch + 1, num_epochs, time.time() - start_time))
         print("  training loss:\t\t{:.6f}".format(train_err / train_batches))
-        print("  validation accuracy:\t\t{:.2f} %".format(
-            train_acc / train_batches * 100))
-        append_file(results_file_name,epoch + 1,round(train_err / train_batches,2),round((train_acc / train_batches) * 100,2))
-        
+        logging.info("Epoch {} of {} took {:.3f}s".format(
+            epoch + 1, num_epochs, time.time() - start_time))
+        logging.info("  training loss:\t\t{:.6f}".format(train_err / train_batches))
         # Dump the network file every 100 epochs
         if (epoch + 1) % 100 == 0:
             print('creating network file')
-            network_file = file('/home/an67a/deep_nowcaster/output/'+ network_file_name + '_' + str(epoch + 1) + '.pkl','wb')
+            network_file = file('/home/an67a/yelp_kaggle/output/'+ network_file_name + '_' + str(epoch + 1) + '.pkl','wb')
             cPickle.dump(network,network_file,protocol = cPickle.HIGHEST_PROTOCOL)
             network_file.close()
     time_taken = round(time.time() - experiment_start_time,2)
